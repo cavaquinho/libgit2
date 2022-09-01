@@ -36,6 +36,28 @@ typedef int GIT_CALLBACK(git_transport_message_cb)(const char *str, int len, voi
 /** Signature of a function which creates a transport */
 typedef int GIT_CALLBACK(git_transport_cb)(git_transport **out, git_remote *owner, void *param);
 
+/** Type of SSH session. */
+typedef enum {
+	/** Session used by libssh2. */
+	GIT_SSH_SESSION_TYPE_LIBSSH_2 = 1
+} git_ssh_session_type;
+
+/**
+ * Callback for configuring an SSH session before the
+ * connection is established.
+ *
+ * This gives the caller opportunity to configure some of
+ * the session parameters like the order and list of types
+ * of hostkeys that are negotiated, allowed encryption
+ * algorithms, etc.
+ *
+ * @param session Session used by the underlying
+ * SSH implementation.
+ * @param session_type Type of SSH session.
+ * @param payload Payload provided by the caller.
+ */
+typedef int GIT_CALLBACK(git_ssh_session_cb)(const void *session, git_ssh_session_type session_type, void *payload);
+
 /** @} */
 GIT_END_DECL
 

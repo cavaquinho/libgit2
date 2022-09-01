@@ -644,6 +644,15 @@ struct git_remote_callbacks {
 	 */
 	git_url_resolve_cb resolve_url;
 #endif
+
+	/**
+	 * Allows the caller to configure an SSH session before the
+	 * connection is established.
+	 *
+	 * This is useful for setting the order and list of allowed hostkey
+	 * types, encryption algorithms, etc.
+	 */
+	git_ssh_session_cb ssh_session_callback;
 };
 
 #define GIT_REMOTE_CALLBACKS_VERSION 1

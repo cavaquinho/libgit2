@@ -423,7 +423,8 @@ static int request_creds(git_credential **out, ssh_subtransport *t, const char *
 
 static int _git_ssh_session_create(
 	LIBSSH2_SESSION **session,
-	git_stream *io)
+	git_stream *io,
+	git_remote_callbacks *remote_callbacks)
 {
 	int rc = 0;
 	LIBSSH2_SESSION *s;
@@ -435,6 +436,15 @@ static int _git_ssh_session_create(
 	if (!s) {
 		git_error_set(GIT_ERROR_NET, "failed to initialize SSH session");
 		return -1;
+	}
+
+	if (remote_callbacks->ssh_session_callback != NULL) {
+		int error = remote_callbacks->ssh_session_callback(s, GIT_SSH_SESSION_TYPE_LIBSSH_2, remote_callbacks->payload);
+		if (error < 0) {
+			git_error_set_after_callback_function(error, "git_remote_connect");
+			libssh2_session_free(s);
+			return error;
+		}
 	}
 
 	do {
@@ -490,7 +500,7 @@ static int _git_ssh_setup_conn(
 	    (error = git_stream_connect(s->io)) < 0)
 		goto done;
 
-	if ((error = _git_ssh_session_create(&session, s->io)) < 0)
+	if ((error = _git_ssh_session_create(&session, s->io, &(t->owner->connect_opts.callbacks))) < 0)
 		goto done;
 
 	if (t->owner->connect_opts.callbacks.certificate_check != NULL) {
