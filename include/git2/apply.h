@@ -160,6 +160,36 @@ GIT_EXTERN(int) git_apply(
 	git_apply_location_t location,
 	const git_apply_options *options);
 
+
+/**
+ * Apply a `git_diff` to the given repository, making changes directly
+ * in the working directory, the index, or both.
+ *
+ * @param repo the repository to apply to
+ * @param diff the diff to apply
+ * @param location the location to apply (workdir, index or both)
+ * @param options the options for the apply (or null for defaults)
+ * @param using_locked_index If not `NULL`, use this index for patching
+ * operations without locking or writing it. It's assumed the caller will take care
+ * of that. This is useful for batch apply operations.
+ * @return 0 or an error code
+ */
+GIT_EXTERN(int) git_apply_ext(
+	git_repository *repo,
+	git_diff *diff,
+	git_apply_location_t location,
+	const git_apply_options *options,
+	git_index *using_locked_index);
+
+
+/** Packbuilder progress notification function */
+typedef int GIT_CALLBACK(git_apply_with_indexwriter_fn)(void *payload);
+
+/**
+ * Runs the given callback while the given index is locked.
+ */
+GIT_EXTERN(int) with_locked_index(git_index *index, git_apply_with_indexwriter_fn cb, void *payload);
+
 /** @} */
 GIT_END_DECL
 #endif
