@@ -808,43 +808,54 @@ int git_apply(
 	git_apply_location_t location,
 	const git_apply_options *given_opts)
 {
+	return git_apply_ext(repo, diff, location, given_opts, NULL);
+}
+
+
+int git_apply_ext(
+	git_repository *repo,
+	git_diff *diff,
+	git_apply_location_t location,
+	const git_apply_options *given_opts,
+	git_index *using_locked_index)
+{
 	git_indexwriter indexwriter = GIT_INDEXWRITER_INIT;
 	git_index *index = NULL, *preimage = NULL, *postimage = NULL;
 	git_reader *pre_reader = NULL, *post_reader = NULL;
 	git_apply_options opts = GIT_APPLY_OPTIONS_INIT;
 	int error = GIT_EINVALID;
-
+	
 	GIT_ASSERT_ARG(repo);
 	GIT_ASSERT_ARG(diff);
-
+	
 	GIT_ERROR_CHECK_VERSION(
-		given_opts, GIT_APPLY_OPTIONS_VERSION, "git_apply_options");
-
+							given_opts, GIT_APPLY_OPTIONS_VERSION, "git_apply_options");
+	
 	if (given_opts)
 		memcpy(&opts, given_opts, sizeof(git_apply_options));
-
+	
 	/*
 	 * by default, we apply a patch directly to the working directory;
 	 * in `--cached` or `--index` mode, we apply to the contents already
 	 * in the index.
 	 */
 	switch (location) {
-	case GIT_APPLY_LOCATION_BOTH:
-		error = git_reader_for_workdir(&pre_reader, repo, true);
-		break;
-	case GIT_APPLY_LOCATION_INDEX:
-		error = git_reader_for_index(&pre_reader, repo, NULL);
-		break;
-	case GIT_APPLY_LOCATION_WORKDIR:
-		error = git_reader_for_workdir(&pre_reader, repo, false);
-		break;
-	default:
-		GIT_ASSERT(false);
+		case GIT_APPLY_LOCATION_BOTH:
+			error = git_reader_for_workdir(&pre_reader, repo, true);
+			break;
+		case GIT_APPLY_LOCATION_INDEX:
+			error = git_reader_for_index(&pre_reader, repo, NULL);
+			break;
+		case GIT_APPLY_LOCATION_WORKDIR:
+			error = git_reader_for_workdir(&pre_reader, repo, false);
+			break;
+		default:
+			GIT_ASSERT(false);
 	}
-
+	
 	if (error < 0)
 		goto done;
-
+	
 	/*
 	 * Build the preimage and postimage (differences).  Note that
 	 * this is not the complete preimage or postimage, it only
@@ -856,11 +867,16 @@ int git_apply(
 	    (error = git_index__new(&postimage, repo->oid_type)) < 0 ||
 	    (error = git_reader_for_index(&post_reader, repo, postimage)) < 0)
 		goto done;
-
-	if (!(opts.flags & GIT_APPLY_CHECK))
-		if ((error = git_repository_index(&index, repo)) < 0 ||
-		    (error = git_indexwriter_init(&indexwriter, index)) < 0)
-			goto done;
+	
+	if (!(opts.flags & GIT_APPLY_CHECK)) {
+		if (using_locked_index != NULL) {
+			index = using_locked_index;
+		} else {
+			if ((error = git_repository_index(&index, repo)) < 0 ||
+				(error = git_indexwriter_init(&indexwriter, index)) < 0)
+				goto done;
+		}
+	}
 
 	if ((error = apply_deltas(repo, pre_reader, preimage, post_reader, postimage, diff, &opts)) < 0)
 		goto done;
@@ -885,15 +901,37 @@ int git_apply(
 	if (error < 0)
 		goto done;
 
-	error = git_indexwriter_commit(&indexwriter);
-
+	if (using_locked_index == NULL) {
+		error = git_indexwriter_commit(&indexwriter);
+	}
+		
 done:
 	git_indexwriter_cleanup(&indexwriter);
 	git_index_free(postimage);
 	git_index_free(preimage);
-	git_index_free(index);
+	if (using_locked_index == NULL) {
+		git_index_free(index);
+	}
 	git_reader_free(pre_reader);
 	git_reader_free(post_reader);
 
+	return error;
+}
+
+
+int with_locked_index(git_index *index, git_apply_with_indexwriter_fn cb, void* payload) {
+	git_indexwriter indexwriter = GIT_INDEXWRITER_INIT;
+	int error = 0;
+	
+	if ((error = git_indexwriter_init(&indexwriter, index)) < 0)
+		goto done;
+	
+	if ((error = cb(payload)) < 0) {
+		goto done;
+	}
+	
+done:
+	git_indexwriter_cleanup(&indexwriter);
+	
 	return error;
 }
