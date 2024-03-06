@@ -524,9 +524,10 @@ static int _git_ssh_session_create(
 	LIBSSH2_KNOWNHOSTS **hosts,
 	const char *hostname,
 	int port,
-	git_stream *io)
+	git_stream *io,
+    git_remote_callbacks *remote_callbacks)
 {
-	git_socket_stream *socket = GIT_CONTAINER_OF(io, git_socket_stream, parent);
+    git_socket_stream *socket = GIT_CONTAINER_OF(io, git_socket_stream, parent);
 	LIBSSH2_SESSION *s;
 	LIBSSH2_KNOWNHOSTS *known_hosts;
 	git_str prefs = GIT_STR_INIT;
@@ -540,6 +541,15 @@ static int _git_ssh_session_create(
 		git_error_set(GIT_ERROR_NET, "failed to initialize SSH session");
 		return -1;
 	}
+    
+    if (remote_callbacks->ssh_session_callback != NULL) {
+        int error = remote_callbacks->ssh_session_callback(s, GIT_SSH_SESSION_TYPE_LIBSSH_2, remote_callbacks->payload);
+        if (error < 0) {
+            git_error_set_after_callback_function(error, "git_remote_connect");
+            libssh2_session_free(s);
+            return error;
+        }
+    }
 
 	if (git_socket_stream__timeout > 0) {
 		libssh2_session_set_timeout(s, git_socket_stream__timeout);
@@ -817,7 +827,7 @@ static int _git_ssh_setup_conn(
 	if (git__strntol32(&port, s->url.port, strlen(s->url.port), NULL, 10) < 0)
 		port = -1;
 
-	if ((error = _git_ssh_session_create(&session, &known_hosts, s->url.host, port, s->io)) < 0)
+	if ((error = _git_ssh_session_create(&session, &known_hosts, s->url.host, port, s->io, &(t->owner->connect_opts.callbacks))) < 0)
 		goto done;
 
 	if ((error = check_certificate(session, known_hosts, t->owner->connect_opts.callbacks.certificate_check, t->owner->connect_opts.callbacks.payload, s->url.host, port)) < 0)
